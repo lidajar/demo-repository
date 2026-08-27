@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f0e7" />
+    <meta
+      name="description"
+      content="Springboard — draw playful spring networks and watch them move."
+    />
+    <title>Springboard</title>
+    <script type="module" crossorigin src="./assets/index-BGn61Odp.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DEmiXKw9.css">
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="canvas" aria-label="Interactive spring network canvas"></canvas>
+
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Springboard home">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+          <span>Springboard</span>
+        </a>
+        <p class="hint" id="hint">Tap anywhere to place a point</p>
+        <div class="header-actions">
+          <button class="icon-button" id="clear-button" type="button" aria-label="Clear canvas">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M9 6V4h6v2m2 0-1 14H8L7 6m3 4v6m4-6v6"/></svg>
+          </button>
+          <button class="icon-button" id="info-button" type="button" aria-label="Show instructions">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.01"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="inspector" id="inspector" aria-live="polite">
+        <div class="inspector-heading">
+          <div>
+            <span class="eyebrow" id="selection-type">Spring selected</span>
+            <strong id="selection-name">Spring 01</strong>
+          </div>
+          <button class="close-button" id="close-inspector" type="button" aria-label="Close inspector">×</button>
+        </div>
+        <div id="spring-controls">
+          <label class="control-label" for="rest-length">
+            <span>Rest length</span><output id="rest-output">120 px</output>
+          </label>
+          <input id="rest-length" type="range" min="30" max="260" value="120" />
+          <label class="control-label" for="stiffness">
+            <span>Spring force</span><output id="stiffness-output">0.018</output>
+          </label>
+          <input id="stiffness" type="range" min="0.003" max="0.06" value="0.018" step="0.001" />
+        </div>
+        <div id="point-controls" hidden>
+          <button class="anchor-toggle" id="anchor-toggle" type="button" role="switch" aria-checked="false">
+            <span><i class="anchor-icon"></i><span><b>Anchor point</b><small>Anchors stay fixed in place</small></span></span>
+            <i class="switch-track"><i></i></i>
+          </button>
+        </div>
+        <button class="delete-selection" id="delete-selection" type="button">Delete selection</button>
+      </section>
+
+      <nav class="toolbar" aria-label="Drawing tools">
+        <div class="tool-group" role="group" aria-label="Edit mode">
+          <button class="tool active" data-mode="point" type="button" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3"/></svg>
+            <span>Point</span>
+          </button>
+          <button class="tool" data-mode="link" type="button" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.8 15.2 6.4-6.4M7 17l-1 1a2.8 2.8 0 0 1-4-4l3-3a2.8 2.8 0 0 1 4 0m8-4 1-1a2.8 2.8 0 1 1 4 4l-3 3a2.8 2.8 0 0 1-4 0"/></svg>
+            <span>Connect</span>
+          </button>
+          <button class="tool" data-mode="select" type="button" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 3 13 9-6 1.5L9 19z"/></svg>
+            <span>Select</span>
+          </button>
+        </div>
+        <button class="play-button" id="play-button" type="button">
+          <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6z"/></svg>
+          <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h3v12H8zm5 0h3v12h-3z"/></svg>
+          <span>Start</span>
+        </button>
+      </nav>
+
+      <div class="welcome" id="welcome">
+        <span class="welcome-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+        <h1>Make something move.</h1>
+        <p>Place points, connect them with springs, then bring your creation to life.</p>
+        <button id="welcome-button" type="button">Start drawing</button>
+      </div>
+
+      <dialog id="help-dialog">
+        <button class="close-button" id="close-help" type="button" aria-label="Close instructions">×</button>
+        <span class="eyebrow">Quick guide</span>
+        <h2>Build a spring network</h2>
+        <ol>
+          <li><b>Place points</b><span>Tap or click anywhere on the canvas.</span></li>
+          <li><b>Connect them</b><span>Choose Connect, then select two points.</span></li>
+          <li><b>Make it yours</b><span>Select points or springs to edit their properties.</span></li>
+          <li><b>Set it in motion</b><span>Press Start and drag points while it runs.</span></li>
+        </ol>
+      </dialog>
+    </main>
+  </body>
+</html>
