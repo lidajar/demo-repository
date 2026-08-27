@@ -20,5 +20,5 @@ To serve it, a repository admin needs to turn Pages on once: **Settings → Page
 deployment → Source: Deploy from a branch → Branch: `gh-pages` / `/ (root)`**. The site then
 appears at <https://lidajar.github.io/demo-repository/>.
 
-GitHub only serves Pages for a private repository on GitHub Enterprise Cloud, so on other plans the
-repository has to be public for the URL to load.
+Enabling Pages requires repository admin rights; the workflow's `GITHUB_TOKEN` cannot create the
+Pages site itself, which is why that first step is manual.
