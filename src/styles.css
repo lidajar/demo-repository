@@ -788,9 +788,12 @@ dialog li span {
     transform: translate(-50%, 0);
   }
 
-  .inspector.visible ~ .camera-controls {
+  /* The sheet and the zoom cluster both live above the toolbar, so on narrow
+     screens the sheet steps aside while the camera is being moved. */
+  .camera-mode .inspector.visible {
     opacity: 0;
     pointer-events: none;
+    transform: translateY(10px);
   }
 
   .inspector {
