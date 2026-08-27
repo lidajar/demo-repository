@@ -10,3 +10,15 @@ npm run dev
 ```
 
 Tap to place points, connect them with springs, anchor selected points, and tune each spring's rest length and force.
+
+## Deploy to GitHub Pages
+
+Every push to `main` (and to the current feature branch) builds the app and publishes it to the
+`gh-pages` branch via `.github/workflows/deploy-pages.yml`.
+
+To serve it, a repository admin needs to turn Pages on once: **Settings → Pages → Build and
+deployment → Source: Deploy from a branch → Branch: `gh-pages` / `/ (root)`**. The site then
+appears at <https://lidajar.github.io/demo-repository/>.
+
+GitHub only serves Pages for a private repository on GitHub Enterprise Cloud, so on other plans the
+repository has to be public for the URL to load.
