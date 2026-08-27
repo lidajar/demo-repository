@@ -1,6 +1,6 @@
 import './styles.css'
 
-type Mode = 'point' | 'link' | 'select'
+type Mode = 'point' | 'link' | 'select' | 'camera'
 
 interface Point {
   id: number
@@ -21,6 +21,12 @@ interface Spring {
 
 type Selection = { type: 'point'; id: number } | { type: 'spring'; id: number } | null
 
+interface Camera {
+  x: number
+  y: number
+  zoom: number
+}
+
 const canvas = document.querySelector<HTMLCanvasElement>('#canvas')!
 const ctx = canvas.getContext('2d')!
 const app = document.querySelector<HTMLElement>('#app')!
@@ -39,6 +45,7 @@ const anchorToggle = document.querySelector<HTMLButtonElement>('#anchor-toggle')
 const playButton = document.querySelector<HTMLButtonElement>('#play-button')!
 const welcome = document.querySelector<HTMLElement>('#welcome')!
 const helpDialog = document.querySelector<HTMLDialogElement>('#help-dialog')!
+const zoomOutput = document.querySelector<HTMLOutputElement>('#zoom-output')!
 
 let width = window.innerWidth
 let height = window.innerHeight
@@ -53,6 +60,11 @@ let draggedPoint: Point | null = null
 let dragMoved = false
 let pointerStart = { x: 0, y: 0 }
 let lastTime = performance.now()
+const camera: Camera = { x: 0, y: 0, zoom: 1 }
+const cameraTarget: Camera = { x: 0, y: 0, zoom: 1 }
+const activeCameraPointers = new Map<number, { x: number; y: number }>()
+let panStart: { x: number; y: number; cameraX: number; cameraY: number } | null = null
+let pinchStart: { distance: number; zoom: number; worldX: number; worldY: number } | null = null
 
 const points: Point[] = []
 const springs: Spring[] = []
@@ -111,13 +123,13 @@ function resizeCanvas(): void {
   canvas.style.height = `${height}px`
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-  if (oldWidth && oldHeight && points.length) {
+  if (oldWidth && oldHeight) {
     const dx = (width - oldWidth) / 2
     const dy = (height - oldHeight) / 2
-    points.forEach((point) => {
-      point.x = Math.max(24, Math.min(width - 24, point.x + dx))
-      point.y = Math.max(88, Math.min(height - 110, point.y + dy))
-    })
+    camera.x += dx
+    camera.y += dy
+    cameraTarget.x += dx
+    cameraTarget.y += dy
   }
 }
 
@@ -134,9 +146,23 @@ function getCanvasPosition(event: PointerEvent): { x: number; y: number } {
   return { x: event.clientX - rect.left, y: event.clientY - rect.top }
 }
 
+function screenToWorld(position: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: (position.x - camera.x) / camera.zoom,
+    y: (position.y - camera.y) / camera.zoom,
+  }
+}
+
+function worldToScreen(position: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: position.x * camera.zoom + camera.x,
+    y: position.y * camera.zoom + camera.y,
+  }
+}
+
 function hitPoint(x: number, y: number): Point | null {
   for (let index = points.length - 1; index >= 0; index--) {
-    if (Math.hypot(points[index].x - x, points[index].y - y) <= 22) return points[index]
+    if (Math.hypot(points[index].x - x, points[index].y - y) <= 22 / camera.zoom) return points[index]
   }
   return null
 }
@@ -152,7 +178,7 @@ function distanceToSegment(x: number, y: number, a: Point, b: Point): number {
 
 function hitSpring(x: number, y: number): Spring | null {
   let closest: Spring | null = null
-  let distance = 12
+  let distance = 12 / camera.zoom
   springs.forEach((spring) => {
     const a = pointById(spring.a)
     const b = pointById(spring.b)
@@ -178,9 +204,11 @@ function setMode(nextMode: Mode): void {
     point: 'Tap anywhere to place a point',
     link: 'Select two points to connect them',
     select: 'Select or drag any point or spring',
+    camera: 'Drag to pan · pinch or scroll to zoom',
   }
   hint.textContent = hints[mode]
-  canvas.style.cursor = mode === 'point' ? 'crosshair' : 'default'
+  app.classList.toggle('camera-mode', mode === 'camera')
+  canvas.style.cursor = mode === 'point' ? 'crosshair' : mode === 'camera' ? 'grab' : 'default'
 }
 
 function select(nextSelection: Selection): void {
@@ -210,6 +238,76 @@ function select(nextSelection: Selection): void {
     stiffnessInput.value = String(spring.stiffness)
     updateInspectorOutputs()
   }
+  requestAnimationFrame(revealSelection)
+}
+
+function selectionScreenBounds(): { left: number; right: number; top: number; bottom: number } | null {
+  if (!selection) return null
+  let selectedPoints: Point[] = []
+  if (selection.type === 'point') {
+    const point = pointById(selection.id)
+    if (point) selectedPoints = [point]
+  } else {
+    const spring = springById(selection.id)
+    const a = spring ? pointById(spring.a) : undefined
+    const b = spring ? pointById(spring.b) : undefined
+    if (a && b) selectedPoints = [a, b]
+  }
+  if (!selectedPoints.length) return null
+  const screenPoints = selectedPoints.map(worldToScreen)
+  const padding = selection.type === 'point' ? 22 : 14
+  return {
+    left: Math.min(...screenPoints.map((point) => point.x)) - padding,
+    right: Math.max(...screenPoints.map((point) => point.x)) + padding,
+    top: Math.min(...screenPoints.map((point) => point.y)) - padding,
+    bottom: Math.max(...screenPoints.map((point) => point.y)) + padding,
+  }
+}
+
+function revealSelection(): void {
+  const bounds = selectionScreenBounds()
+  if (!bounds || !inspector.classList.contains('visible')) return
+  const inspectorRect = inspector.getBoundingClientRect()
+  const toolbarRect = toolbar.getBoundingClientRect()
+  const margin = 28
+  const safe = {
+    left: margin,
+    right: width - margin,
+    top: 82 + margin,
+    bottom: toolbarRect.top - margin,
+  }
+  let dx = 0
+  let dy = 0
+
+  if (bounds.left < safe.left) dx += safe.left - bounds.left
+  else if (bounds.right > safe.right) dx += safe.right - bounds.right
+  if (bounds.top < safe.top) dy += safe.top - bounds.top
+  else if (bounds.bottom > safe.bottom) dy += safe.bottom - bounds.bottom
+
+  const shifted = {
+    left: bounds.left + dx,
+    right: bounds.right + dx,
+    top: bounds.top + dy,
+    bottom: bounds.bottom + dy,
+  }
+  const overlapsInspector =
+    shifted.right > inspectorRect.left - margin &&
+    shifted.left < inspectorRect.right + margin &&
+    shifted.bottom > inspectorRect.top - margin &&
+    shifted.top < inspectorRect.bottom + margin
+
+  if (overlapsInspector) {
+    if (width <= 700) {
+      dy += inspectorRect.top - margin - shifted.bottom
+    } else {
+      dx += inspectorRect.left - margin - shifted.right
+    }
+  }
+
+  if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+    cameraTarget.x += dx
+    cameraTarget.y += dy
+  }
 }
 
 function updateInspectorOutputs(): void {
@@ -226,6 +324,7 @@ function setRunning(nextRunning: boolean): void {
     point: 'Tap anywhere to place a point',
     link: 'Select two points to connect them',
     select: 'Select or drag any point or spring',
+    camera: 'Drag to pan · pinch or scroll to zoom',
   } as Record<Mode, string>)[mode]
 }
 
@@ -285,51 +384,168 @@ function handleCanvasTap(x: number, y: number, targetPoint: Point | null): void 
   }
 }
 
+function cameraPointerCenter(): { x: number; y: number } {
+  const pointers = [...activeCameraPointers.values()]
+  return {
+    x: pointers.reduce((sum, pointer) => sum + pointer.x, 0) / pointers.length,
+    y: pointers.reduce((sum, pointer) => sum + pointer.y, 0) / pointers.length,
+  }
+}
+
+function cameraPointerDistance(): number {
+  const pointers = [...activeCameraPointers.values()]
+  return pointers.length < 2 ? 0 : Math.hypot(pointers[1].x - pointers[0].x, pointers[1].y - pointers[0].y)
+}
+
+function clampZoom(zoom: number): number {
+  return Math.max(0.25, Math.min(3, zoom))
+}
+
+function setZoom(zoom: number, focal = { x: width / 2, y: height / 2 }, smooth = false): void {
+  const nextZoom = clampZoom(zoom)
+  const worldAtFocal = screenToWorld(focal)
+  const nextX = focal.x - worldAtFocal.x * nextZoom
+  const nextY = focal.y - worldAtFocal.y * nextZoom
+  cameraTarget.x = nextX
+  cameraTarget.y = nextY
+  cameraTarget.zoom = nextZoom
+  if (!smooth) {
+    camera.x = nextX
+    camera.y = nextY
+    camera.zoom = nextZoom
+  }
+  zoomOutput.value = `${Math.round(nextZoom * 100)}%`
+}
+
+function fitNetwork(): void {
+  if (!points.length) {
+    cameraTarget.x = 0
+    cameraTarget.y = 0
+    cameraTarget.zoom = 1
+    zoomOutput.value = '100%'
+    return
+  }
+  const minX = Math.min(...points.map((point) => point.x))
+  const maxX = Math.max(...points.map((point) => point.x))
+  const minY = Math.min(...points.map((point) => point.y))
+  const maxY = Math.max(...points.map((point) => point.y))
+  const usableWidth = width - (width > 700 && selection ? 370 : 80)
+  const usableHeight = height - (width <= 700 && selection ? 390 : 190)
+  const zoom = clampZoom(Math.min(1.25, usableWidth / Math.max(maxX - minX + 100, 1), usableHeight / Math.max(maxY - minY + 100, 1)))
+  const centerX = width > 700 && selection ? (width - 330) / 2 : width / 2
+  const centerY = width <= 700 && selection ? (height - 290) / 2 : height / 2
+  cameraTarget.zoom = zoom
+  cameraTarget.x = centerX - ((minX + maxX) / 2) * zoom
+  cameraTarget.y = centerY - ((minY + maxY) / 2) * zoom
+  zoomOutput.value = `${Math.round(zoom * 100)}%`
+}
+
 canvas.addEventListener('pointerdown', (event) => {
   welcome.classList.add('hidden')
-  const position = getCanvasPosition(event)
-  const target = hitPoint(position.x, position.y)
-  pointerStart = position
+  const screen = getCanvasPosition(event)
+  pointerStart = screen
   dragMoved = false
+  canvas.setPointerCapture(event.pointerId)
+
+  if (mode === 'camera') {
+    activeCameraPointers.set(event.pointerId, screen)
+    if (activeCameraPointers.size === 1) {
+      panStart = { x: screen.x, y: screen.y, cameraX: camera.x, cameraY: camera.y }
+      canvas.style.cursor = 'grabbing'
+    } else if (activeCameraPointers.size === 2) {
+      const center = cameraPointerCenter()
+      const worldCenter = screenToWorld(center)
+      pinchStart = {
+        distance: cameraPointerDistance(),
+        zoom: camera.zoom,
+        worldX: worldCenter.x,
+        worldY: worldCenter.y,
+      }
+    }
+    return
+  }
+
+  const world = screenToWorld(screen)
+  const target = hitPoint(world.x, world.y)
   if (target) {
     draggedPoint = target
     target.vx = 0
     target.vy = 0
-    canvas.setPointerCapture(event.pointerId)
   }
 })
 
 canvas.addEventListener('pointermove', (event) => {
-  const position = getCanvasPosition(event)
+  const screen = getCanvasPosition(event)
+  if (mode === 'camera' && activeCameraPointers.has(event.pointerId)) {
+    activeCameraPointers.set(event.pointerId, screen)
+    if (activeCameraPointers.size >= 2 && pinchStart) {
+      const center = cameraPointerCenter()
+      const zoom = clampZoom(pinchStart.zoom * cameraPointerDistance() / Math.max(pinchStart.distance, 1))
+      camera.zoom = zoom
+      camera.x = center.x - pinchStart.worldX * zoom
+      camera.y = center.y - pinchStart.worldY * zoom
+      Object.assign(cameraTarget, camera)
+      zoomOutput.value = `${Math.round(zoom * 100)}%`
+    } else if (panStart) {
+      camera.x = panStart.cameraX + screen.x - panStart.x
+      camera.y = panStart.cameraY + screen.y - panStart.y
+      Object.assign(cameraTarget, camera)
+    }
+    return
+  }
+
+  const world = screenToWorld(screen)
   if (draggedPoint) {
-    const distance = Math.hypot(position.x - pointerStart.x, position.y - pointerStart.y)
+    const distance = Math.hypot(screen.x - pointerStart.x, screen.y - pointerStart.y)
     if (distance > 3) dragMoved = true
     if (dragMoved) {
-      draggedPoint.x = Math.max(18, Math.min(width - 18, position.x))
-      draggedPoint.y = Math.max(72, Math.min(height - 92, position.y))
+      draggedPoint.x = world.x
+      draggedPoint.y = world.y
       draggedPoint.vx = 0
       draggedPoint.vy = 0
     }
   } else {
-    canvas.style.cursor = hitPoint(position.x, position.y) ? 'grab' : mode === 'point' ? 'crosshair' : 'default'
+    canvas.style.cursor = hitPoint(world.x, world.y) ? 'grab' : mode === 'point' ? 'crosshair' : 'default'
   }
 })
 
-canvas.addEventListener('pointerup', (event) => {
-  const position = getCanvasPosition(event)
-  const target = hitPoint(position.x, position.y)
-  if (!dragMoved) handleCanvasTap(position.x, position.y, target)
-  draggedPoint = null
-  canvas.releasePointerCapture(event.pointerId)
-})
+function endPointer(event: PointerEvent): void {
+  const screen = getCanvasPosition(event)
+  if (mode === 'camera') {
+    activeCameraPointers.delete(event.pointerId)
+    pinchStart = null
+    const remaining = [...activeCameraPointers.values()][0]
+    panStart = remaining ? { x: remaining.x, y: remaining.y, cameraX: camera.x, cameraY: camera.y } : null
+    canvas.style.cursor = activeCameraPointers.size ? 'grabbing' : 'grab'
+  } else {
+    const world = screenToWorld(screen)
+    const target = hitPoint(world.x, world.y)
+    if (!dragMoved) handleCanvasTap(world.x, world.y, target)
+    draggedPoint = null
+  }
+  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+}
 
-canvas.addEventListener('pointercancel', () => {
-  draggedPoint = null
-})
+canvas.addEventListener('pointerup', endPointer)
+canvas.addEventListener('pointercancel', endPointer)
+canvas.addEventListener('wheel', (event) => {
+  if (mode !== 'camera') return
+  event.preventDefault()
+  const focal = { x: event.clientX, y: event.clientY }
+  setZoom(camera.zoom * Math.exp(-event.deltaY * 0.0015), focal)
+}, { passive: false })
 
 document.querySelectorAll<HTMLButtonElement>('.tool').forEach((button) => {
   button.addEventListener('click', () => setMode(button.dataset.mode as Mode))
 })
+
+document.querySelector<HTMLButtonElement>('#zoom-out')!.addEventListener('click', () => {
+  setZoom(cameraTarget.zoom / 1.25, undefined, true)
+})
+document.querySelector<HTMLButtonElement>('#zoom-in')!.addEventListener('click', () => {
+  setZoom(cameraTarget.zoom * 1.25, undefined, true)
+})
+document.querySelector<HTMLButtonElement>('#reset-camera')!.addEventListener('click', fitNetwork)
 
 playButton.addEventListener('click', () => {
   welcome.classList.add('hidden')
@@ -350,6 +566,10 @@ document.querySelector<HTMLButtonElement>('#clear-button')!.addEventListener('cl
   setRunning(false)
   select(null)
   setMode('point')
+  cameraTarget.x = 0
+  cameraTarget.y = 0
+  cameraTarget.zoom = 1
+  zoomOutput.value = '100%'
 })
 
 document.querySelector<HTMLButtonElement>('#info-button')!.addEventListener('click', () => helpDialog.showModal())
@@ -422,29 +642,31 @@ function updatePhysics(delta: number): void {
     }
     point.x += point.vx * step
     point.y += point.vy * step
-
-    const margin = 22
-    const bottomMargin = width < 700 ? 110 : 30
-    if (point.x < margin || point.x > width - margin) {
-      point.x = Math.max(margin, Math.min(width - margin, point.x))
-      point.vx *= -0.72
-    }
-    if (point.y < 76 || point.y > height - bottomMargin) {
-      point.y = Math.max(76, Math.min(height - bottomMargin, point.y))
-      point.vy *= -0.72
-    }
   })
 }
 
 function drawGrid(): void {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.fillStyle = '#f3f0e7'
   ctx.fillRect(0, 0, width, height)
+  ctx.setTransform(
+    dpr * camera.zoom,
+    0,
+    0,
+    dpr * camera.zoom,
+    dpr * camera.x,
+    dpr * camera.y,
+  )
   ctx.fillStyle = 'rgba(31, 42, 38, 0.09)'
   const spacing = 28
-  for (let x = spacing / 2; x < width; x += spacing) {
-    for (let y = spacing / 2; y < height; y += spacing) {
+  const topLeft = screenToWorld({ x: 0, y: 0 })
+  const bottomRight = screenToWorld({ x: width, y: height })
+  const startX = Math.floor(topLeft.x / spacing) * spacing
+  const startY = Math.floor(topLeft.y / spacing) * spacing
+  for (let x = startX; x < bottomRight.x + spacing; x += spacing) {
+    for (let y = startY; y < bottomRight.y + spacing; y += spacing) {
       ctx.beginPath()
-      ctx.arc(x, y, 0.8, 0, Math.PI * 2)
+      ctx.arc(x, y, 0.8 / Math.sqrt(camera.zoom), 0, Math.PI * 2)
       ctx.fill()
     }
   }
@@ -528,6 +750,12 @@ function render(time: number): void {
   const delta = time - lastTime
   lastTime = time
   if (running) updatePhysics(delta)
+  if (!activeCameraPointers.size) {
+    const easing = 1 - Math.pow(0.82, Math.min(delta / 16.667, 2))
+    camera.x += (cameraTarget.x - camera.x) * easing
+    camera.y += (cameraTarget.y - camera.y) * easing
+    camera.zoom += (cameraTarget.zoom - camera.zoom) * easing
+  }
   drawGrid()
   springs.forEach(drawSpring)
   points.forEach(drawPoint)

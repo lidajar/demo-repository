@@ -255,6 +255,10 @@ a:focus-visible {
   fill: currentColor;
 }
 
+.tool[data-mode='camera'] svg {
+  fill: none;
+}
+
 .play-button {
   display: flex;
   min-width: 108px;
@@ -295,6 +299,66 @@ a:focus-visible {
 
 .play-button.running {
   background: var(--orange);
+}
+
+.camera-controls {
+  position: absolute;
+  z-index: 6;
+  bottom: max(27px, calc(env(safe-area-inset-bottom) + 5px));
+  left: 20px;
+  display: flex;
+  padding: 5px;
+  border: 1px solid rgba(37, 55, 47, 0.15);
+  border-radius: 13px;
+  align-items: center;
+  opacity: 0;
+  background: rgba(254, 252, 246, 0.9);
+  box-shadow: 0 12px 36px rgba(25, 36, 31, 0.11);
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: 160ms ease;
+  backdrop-filter: blur(18px);
+}
+
+.camera-mode .camera-controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.camera-controls button {
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.camera-controls button:hover {
+  background: rgba(37, 55, 47, 0.07);
+}
+
+.camera-controls button:not(#reset-camera) {
+  width: 34px;
+  font-size: 20px;
+}
+
+.camera-controls output {
+  min-width: 51px;
+  text-align: center;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+}
+
+.camera-controls #reset-camera {
+  margin-left: 3px;
+  padding: 0 10px;
+  border-left: 1px solid var(--border);
+  border-radius: 0 8px 8px 0;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .inspector {
@@ -714,6 +778,24 @@ dialog li span {
     padding: 0 12px;
   }
 
+  .camera-controls {
+    bottom: 91px;
+    left: 50%;
+    transform: translate(-50%, 8px);
+  }
+
+  .camera-mode .camera-controls {
+    transform: translate(-50%, 0);
+  }
+
+  /* The sheet and the zoom cluster both live above the toolbar, so on narrow
+     screens the sheet steps aside while the camera is being moved. */
+  .camera-mode .inspector.visible {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+  }
+
   .inspector {
     top: auto;
     right: 10px;
@@ -762,7 +844,8 @@ dialog li span {
   }
 
   .play-button {
-    min-width: 76px;
+    min-width: 70px;
+    padding: 0 9px;
   }
 }
 

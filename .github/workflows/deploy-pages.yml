@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - main
-      - cursor/spring-canvas-05dc
+      - 'cursor/**'
   workflow_dispatch:
 
 permissions:
