@@ -1,4 +1,12 @@
-# Welcome to your organization's demo respository
-This code repository (or "repo") is designed to demonstrate the best GitHub has to offer with the least amount of noise.
+# Springboard
 
-The repo includes an `index.html` file (so it can render a web page), two GitHub Actions workflows, and a CSS stylesheet dependency.
+A mobile-first, full-window spring network playground built with Vite, Canvas, and vanilla TypeScript.
+
+## Run locally
+
+```bash
+npm install
+npm run dev
+```
+
+Tap to place points, connect them with springs, anchor selected points, and tune each spring's rest length and force.
